@@ -16,11 +16,21 @@ class HackRxResponse(BaseModel):
 @router.post("/hackrx/run", response_model=HackRxResponse)
 async def run_rag_endpoint(payload: HackRxRequest):
     try:
-        print(f"Processing documents from URL: {payload.documents}")
-        results = await process_documents_and_questions(
-            pdf_url=str(payload.documents),
-            questions=payload.questions
-        )
-        return {"answers": list(results.values())}
+        # Log the incoming request details
+        print("Received RAG request:")
+        print(f"Document URL: {payload.documents}")
+        print(f"Questions: {payload.questions}")
+
+        # --- Commenting out the RAG logic for testing purposes ---
+        # print(f"Processing documents from URL: {payload.documents}")
+        # results = await process_documents_and_questions(
+        #     pdf_url=str(payload.documents),
+        #     questions=payload.questions
+        # )
+        # return {"answers": list(results.values())}
+
+        # Dummy response for testing
+        return {"answers": []}
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
