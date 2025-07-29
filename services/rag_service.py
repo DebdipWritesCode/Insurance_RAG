@@ -22,60 +22,48 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
     # Step 1: Download PDF and extract text
     local_pdf_path = await download_pdf_to_temp_file(pdf_url)
     raw_text_output = extract_text_from_pdf(local_pdf_path)
-
-    # Normalize: ensure we get a single string
     raw_text = "\n".join(raw_text_output) if isinstance(raw_text_output, list) else raw_text_output
     print(f"📄 Extracted {len(raw_text)} characters from PDF")
 
-    # Step 2: Split text into chunks
+    # Step 2: Split text
     chunks = split_text(raw_text)
     print(f"🧾 Extracted {len(chunks)} chunks from PDF")
-    if chunks:
-        print(f"🔹 First chunk (length={len(chunks[0])}): {repr(chunks[0][:100])}...")
     usable_chunks = [c for c in chunks if len(c.strip()) > 50]
     print(f"✅ Usable chunks (>50 chars): {len(usable_chunks)}")
 
-    # Step 3: Generate a unique agent/namespace
+    # Step 3: Embed into vector DB
     agent_id = str(uuid.uuid4())
-
-    # Step 4: Store chunks in vector DB
     await embed_and_upsert(usable_chunks, agent_id)
 
-    # Step 4.5: Give the index some time to become searchable
-    await asyncio.sleep(2)
+    # Step 4: Parallel processing of retrieval + GPT
+    semaphore = asyncio.Semaphore(10)  # Limit concurrency (adjust based on LLM rate limits)
 
-    # Step 5: Retry logic while preserving order
-    print(f"🧠 Processing {len(questions)} questions with retry logic...")
-    max_retries = 3
-    queue = [(i, q, 0) for i, q in enumerate(questions)]  # (original_index, question, attempt_count)
-    results = [None] * len(questions)
+    async def process_question(index: int, question: str) -> tuple[int, str, str]:
+        async with semaphore:
+            for attempt in range(3):
+                try:
+                    retrieval_input = {"query": question, "agent_id": agent_id, "top_k": 3}  # Reduced top_k
+                    retrieved = await retrieve_from_kb(retrieval_input)
+                    retrieved_chunks = retrieved.get("chunks", [])
+                    if not retrieved_chunks:
+                        raise ValueError("No chunks retrieved")
 
-    while queue:
-        i, question, attempt = queue.pop(0)
-        print(f"🔍 Attempting question [{i}]: {question} (Attempt {attempt + 1})")
+                    max_context_chars = 3000  # Tune this (e.g., 2000–3000)
+                    context = "\n".join(retrieved_chunks)[:max_context_chars]
+                    if len(context) > 3000:  # Limit context length
+                        context = context[:3000]
+                    print(f"✏️ Q{index}: Context preview: {context[:100]}...")
+                    answer = await ask_gpt(context, question)
+                    return (index, question, answer)
+                except Exception as e:
+                    print(f"⚠️ Q{index}: Attempt {attempt + 1} failed with error: {e}")
+                    await asyncio.sleep(1)
+            return (index, question, "Sorry, I couldn't find relevant information.")
 
-        retrieval_input = {
-            "query": question,
-            "agent_id": agent_id,
-            "top_k": 5
-        }
-        retrieved = await retrieve_from_kb(retrieval_input)
-        retrieved_chunks = retrieved.get("chunks", [])
-        print(f"📚 Retrieved {len(retrieved_chunks)} chunks for question [{i}]")
+    print(f"🧠 Parallel processing {len(questions)} questions...")
+    tasks = [asyncio.create_task(process_question(i, q)) for i, q in enumerate(questions)]
+    responses = await asyncio.gather(*tasks)
 
-        if not retrieved_chunks:
-            if attempt < max_retries - 1:
-                print(f"🔁 Requeuing question [{i}] due to 0 chunks...")
-                queue.append((i, question, attempt + 1))
-                await asyncio.sleep(1)  # small delay before retry
-            else:
-                print(f"❌ Max retries reached for question [{i}]")
-                results[i] = "Sorry, I couldn't find relevant information."
-            continue
-
-        context = "\n".join(retrieved_chunks)
-        print(f"✏️ Context preview for question [{i}]: {context[:100]}...")
-        answer = ask_gpt(context, question)
-        results[i] = answer
-
-    return {questions[i]: results[i] for i in range(len(questions))}
+    # Step 5: Preserve question order
+    results = {q: ans for _, q, ans in sorted(responses)}
+    return results
