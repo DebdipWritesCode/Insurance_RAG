@@ -12,22 +12,20 @@ index = pc.Index(settings.PINECONE_INDEX_NAME)
 openai_client = OpenAI(api_key=settings.OPENAI_API_KEY)
 EMBED_MODEL = "text-embedding-3-small"
 
-def split_text(text: str, chunk_size=2000, chunk_overlap=500) -> list[str]:
+def split_text(text: str, chunk_size=500, chunk_overlap=100) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return splitter.split_text(text)
   
-def embed_and_upsert(chunks: list[str], namespace: str):
+async def embed_and_upsert(chunks: list[str], namespace: str):
     print(f"Embedding and upserting {len(chunks)} chunks into namespace: {namespace}")
     try:
         vectors = []
-
         batch_size = 50
         total_batches = (len(chunks) + batch_size - 1) // batch_size
         print(f"🧮 Total batches to process: {total_batches} (batch size = {batch_size})")
 
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
-
             current_batch_number = (i // batch_size) + 1
             print(f"📦 Processing batch {current_batch_number}/{total_batches}...")
 
@@ -37,13 +35,22 @@ def embed_and_upsert(chunks: list[str], namespace: str):
             )
 
             for j, embedding in enumerate(embeddings.data):
+                text = batch[j]
+                metadata = {
+                    "text": text,
+                    "section": "unknown",
+                    "page": -1,
+                    "source": "",
+                    "type": "paragraph",
+                }
+
                 vectors.append({
                     "id": f"{namespace}_{i + j}",
                     "values": embedding.embedding,
-                    "metadata": {"text": batch[j]}
+                    "metadata": metadata
                 })
 
-        print(f"⬆️  Finished embedding. Now upserting {len(vectors)} vectors to Pinecone...")
+        print(f"⬆️ Finished embedding. Now upserting {len(vectors)} vectors to Pinecone...")
         response = index.upsert(vectors=vectors, namespace=namespace)
         print(f"✅ Upsert completed. Pinecone response: {response}")
 
@@ -52,7 +59,7 @@ def embed_and_upsert(chunks: list[str], namespace: str):
     except Exception as e:
         print(f"❌ Error in embed_and_upsert: {e}")
         return {"status": "error", "error": str(e)}
-  
+
 async def retrieve_from_kb(input_params):
     try:
         query = input_params.get("query", "")
@@ -82,7 +89,7 @@ async def retrieve_from_kb(input_params):
         content_blocks = []
         for match in results.matches:
             score = match.score
-            if score > 0.2:
+            if score > 0.0:
                 metadata = match.metadata or {}
                 text = metadata.get("text", "")
                 if text:

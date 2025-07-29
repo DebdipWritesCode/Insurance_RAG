@@ -38,31 +38,44 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
     # Step 3: Generate a unique agent/namespace
     agent_id = str(uuid.uuid4())
 
-    # Step 4: Store chunks in Pinecone under this agent_id
-    embed_and_upsert(usable_chunks, agent_id)
+    # Step 4: Store chunks in vector DB
+    await embed_and_upsert(usable_chunks, agent_id)
 
-    # Step 5: Run questions through retrieval + GPT
-    results = {}
-    print(f"🧠 Processing {len(questions)} questions...")
+    # Step 4.5: Give the index some time to become searchable
+    await asyncio.sleep(2)
 
-    for question in questions:
+    # Step 5: Retry logic while preserving order
+    print(f"🧠 Processing {len(questions)} questions with retry logic...")
+    max_retries = 3
+    queue = [(i, q, 0) for i, q in enumerate(questions)]  # (original_index, question, attempt_count)
+    results = [None] * len(questions)
+
+    while queue:
+        i, question, attempt = queue.pop(0)
+        print(f"🔍 Attempting question [{i}]: {question} (Attempt {attempt + 1})")
+
         retrieval_input = {
             "query": question,
             "agent_id": agent_id,
             "top_k": 5
         }
-        print(f"🔍 Retrieving context for question: {question}")
         retrieved = await retrieve_from_kb(retrieval_input)
         retrieved_chunks = retrieved.get("chunks", [])
-        print(f"📚 Retrieved {len(retrieved_chunks)} chunks for question: {question}")
-        context = "\n".join(retrieved_chunks)
+        print(f"📚 Retrieved {len(retrieved_chunks)} chunks for question [{i}]")
 
-        if not context.strip():
-            results[question] = "Sorry, I couldn't find relevant information."
+        if not retrieved_chunks:
+            if attempt < max_retries - 1:
+                print(f"🔁 Requeuing question [{i}] due to 0 chunks...")
+                queue.append((i, question, attempt + 1))
+                await asyncio.sleep(1)  # small delay before retry
+            else:
+                print(f"❌ Max retries reached for question [{i}]")
+                results[i] = "Sorry, I couldn't find relevant information."
             continue
-        
-        print(f"✏️ Context preview: {context[:100]}...")
-        answer = ask_gpt(context, question)
-        results[question] = answer
 
-    return results
+        context = "\n".join(retrieved_chunks)
+        print(f"✏️ Context preview for question [{i}]: {context[:100]}...")
+        answer = ask_gpt(context, question)
+        results[i] = answer
+
+    return {questions[i]: results[i] for i in range(len(questions))}
