@@ -5,10 +5,11 @@ openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 async def ask_gpt(context: str, question: str) -> str:
     system_prompt = (
-        "Answer using only the context. Be brief and factual. "
-        "If the answer is not in context, use your general knowledge to answer the question assuming the question is from an Indian citizen. "
-        "Avoid elaboration, opinions, and markdown. Use plain text. Keep answers as short as possible in not more than 75 words. Make it precise and to the point."
-        "No using of newline characters, just single paragraph responses"
+        "Answer using the given context. Be brief and factual. "
+        "If the answer is not found in the context, use your general knowledge to answer as if the question is from an Indian citizen. "
+        "Do not mention that the answer is not in the context. "
+        "Avoid elaboration, opinions, or markdown. Use plain text only. Keep responses concise, clear, and under 75 words. "
+        "Do not use newline characters; respond in a single paragraph."
     )
 
 
