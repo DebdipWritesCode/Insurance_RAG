@@ -1,6 +1,5 @@
 from pinecone import Pinecone
 from openai import OpenAI
-from langchain.vectorstores import Pinecone as LangchainPinecone
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from config.settings import settings
 
@@ -19,7 +18,7 @@ def split_text(text: str, chunk_size=500, chunk_overlap=100) -> list[str]:
 async def embed_and_upsert(chunks: list[str], namespace: str):
     print(f"Embedding and upserting {len(chunks)} chunks into namespace: {namespace}")
     try:
-        batch_size = 200
+        batch_size = 100
         total_batches = (len(chunks) + batch_size - 1) // batch_size
         total_inserted = 0
 

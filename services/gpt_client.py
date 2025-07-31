@@ -5,8 +5,11 @@ openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 async def ask_gpt(context: str, question: str) -> str:
     system_prompt = (
-    "Use only the context to answer. Be brief. If not in context, answer with your knowledge assuming the question is asked by an Indian citizen. Also no markdown, simple text only."
-)
+        "Answer using only the context. Be brief and factual. "
+        "If the answer is not in context, use your general knowledge to answer the question assuming the question is from an Indian citizen. "
+        "Avoid elaboration, opinions, and markdown. Use plain text. Keep answers as short as possible in not more than 75 words. Make it precise and to the point."
+        "No using of newline characters, just single paragraph responses"
+    )
 
 
     user_prompt = f"""
@@ -17,7 +20,7 @@ async def ask_gpt(context: str, question: str) -> str:
     """
 
     response = await openai_client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-4o",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
