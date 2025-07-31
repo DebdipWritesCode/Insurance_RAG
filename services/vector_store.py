@@ -19,9 +19,10 @@ def split_text(text: str, chunk_size=500, chunk_overlap=100) -> list[str]:
 async def embed_and_upsert(chunks: list[str], namespace: str):
     print(f"Embedding and upserting {len(chunks)} chunks into namespace: {namespace}")
     try:
-        vectors = []
-        batch_size = 50
+        batch_size = 200
         total_batches = (len(chunks) + batch_size - 1) // batch_size
+        total_inserted = 0
+
         print(f"🧮 Total batches to process: {total_batches} (batch size = {batch_size})")
 
         for i in range(0, len(chunks), batch_size):
@@ -34,6 +35,7 @@ async def embed_and_upsert(chunks: list[str], namespace: str):
                 model=EMBED_MODEL
             )
 
+            vectors = []
             for j, embedding in enumerate(embeddings.data):
                 text = batch[j]
                 metadata = {
@@ -50,11 +52,12 @@ async def embed_and_upsert(chunks: list[str], namespace: str):
                     "metadata": metadata
                 })
 
-        print(f"⬆️ Finished embedding. Now upserting {len(vectors)} vectors to Pinecone...")
-        response = index.upsert(vectors=vectors, namespace=namespace)
-        print(f"✅ Upsert completed. Pinecone response: {response}")
+            print(f"⬆️ Upserting {len(vectors)} vectors from batch {current_batch_number}...")
+            response = index.upsert(vectors=vectors, namespace=namespace)
+            print(f"✅ Upsert for batch {current_batch_number} completed. Response: {response}")
+            total_inserted += len(vectors)
 
-        return {"status": "success", "inserted": len(vectors)}
+        return {"status": "success", "inserted": total_inserted}
 
     except Exception as e:
         print(f"❌ Error in embed_and_upsert: {e}")

@@ -5,7 +5,7 @@ openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 async def ask_gpt(context: str, question: str) -> str:
     system_prompt = (
-    "Use only the context to answer. Be brief. If not found, say 'Not mentioned in the context.'"
+    "Use only the context to answer. Be brief. If not in context, answer with your knowledge assuming the question is asked by an Indian citizen. Also no markdown, simple text only."
 )
 
 
