@@ -14,6 +14,22 @@ EMBED_MODEL = "text-embedding-3-small"
 def split_text(text: str, chunk_size=500, chunk_overlap=100) -> list[str]:
     splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
     return splitter.split_text(text)
+
+async def embed_text_batch(texts: list[str]) -> list[list[float]]:
+    try:
+        if not texts:
+            raise ValueError("No texts provided for embedding")
+        
+        response = openai_client.embeddings.create(
+            input=texts,
+            model=EMBED_MODEL
+        )
+        
+        return [item.embedding for item in response.data]
+    
+    except Exception as e:
+        print(f"Error in embed_text_batch: {e}")
+        return []
   
 async def embed_and_upsert(chunks: list[str], namespace: str):
     print(f"Embedding and upserting {len(chunks)} chunks into namespace: {namespace}")
@@ -73,14 +89,12 @@ async def retrieve_from_kb(input_params):
         if not agent_id:
             return {"chunks": [], "status": "error", "message": "Agent ID is required"}
 
-        # Get embedding for query
         query_embedding_response = openai_client.embeddings.create(
             input=[query],
             model=EMBED_MODEL
         )
         query_vector = query_embedding_response.data[0].embedding
 
-        # Search in Pinecone using the vector
         results = index.query(
             vector=query_vector,
             namespace=agent_id,

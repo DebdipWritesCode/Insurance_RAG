@@ -16,7 +16,6 @@ class HackRxResponse(BaseModel):
 @router.post("/hackrx/run", response_model=HackRxResponse)
 async def run_rag_endpoint(payload: HackRxRequest):
     try:
-        print(f"Processing documents from URL: {payload.documents}")
         results = await process_documents_and_questions(
             pdf_url=str(payload.documents),
             questions=payload.questions
