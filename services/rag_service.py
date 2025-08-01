@@ -51,7 +51,7 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str], db
         chunks = split_text(raw_text)
         print(f"🧾 Extracted {len(chunks)} chunks from PDF")
         usable_chunks = [c for c in chunks if len(c.strip()) > 50]
-        print(f"✅ Usable chunks (>50 chars): {len(usable_chunks)}")
+        print(f"✅ Usable chunks (> 50 chars): {len(usable_chunks)}")
 
         await embed_and_upsert(usable_chunks, agent_id)
     else:
