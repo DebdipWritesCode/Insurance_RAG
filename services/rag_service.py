@@ -57,7 +57,7 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str], db
     else:
         print(f"📂 Namespace '{agent_id}' already exists. Skipping download and embedding.")
 
-    semaphore = asyncio.Semaphore(10)
+    semaphore = asyncio.Semaphore(15)
 
     async def process_question(index: int, question: str) -> tuple[int, str, str]:
         async with semaphore:
