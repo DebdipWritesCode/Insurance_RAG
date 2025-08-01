@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Integer, Text, DateTime, func
+from sqlalchemy import Column, Integer, Text, DateTime, func, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.schema import UniqueConstraint
 
 Base = declarative_base()
 
@@ -16,6 +17,10 @@ class QuestionAnswer(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     question = Column(Text, nullable=False)
-    answer = Column(Text, nullable=False)
-    document_id = Column(Integer)
+    answer = Column(Text, nullable=True)
+    document_id = Column(Integer, ForeignKey('documents.id'))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    __table_args__ = (
+        UniqueConstraint('question', 'document_id', name='uq_question_doc'),
+    )

@@ -1,4 +1,5 @@
 from pinecone import Pinecone
+from sqlalchemy.orm import Session
 from services.vector_store import embed_and_upsert, retrieve_from_kb, split_text, embed_text_batch
 from services.pdf_parser import extract_text_from_pdf
 from services.gpt_client import ask_gpt
@@ -7,6 +8,7 @@ import tempfile
 import aiohttp
 import asyncio
 from config.settings import settings
+from db import crud
 
 pc = Pinecone(
   api_key=settings.PINECONE_API_KEY
@@ -26,8 +28,14 @@ async def download_pdf_to_temp_file(pdf_url: str) -> str:
                 tmp.write(content)
                 return tmp.name
 
-async def process_documents_and_questions(pdf_url: str, questions: list[str]) -> dict:
+async def process_documents_and_questions(pdf_url: str, questions: list[str], db: Session) -> dict:
     print(f"Processing documents from URL: {pdf_url}")
+    
+    document = crud.get_or_create_document(db, pdf_url)
+    document_id = document.id
+    
+    for q in questions:
+        crud.create_question_entry(db, q, document_id)
 
     agent_id = generate_namespace_from_url(pdf_url)
     existing_namespaces = pinecone_index.describe_index_stats().namespaces.keys()
@@ -71,6 +79,9 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
                     if cache_result.matches and cache_result.matches[0].score > 0.9:
                         cached_answer = cache_result.matches[0].metadata.get("answer", "")
                         print(f"✅ Q{index}: Cached answer found (score {cache_result.matches[0].score:.4f})")
+                        
+                        crud.update_answer(db, question, document_id, cached_answer)
+                        
                         return (index, question, cached_answer)
                     
                     retrieval_input = {"query": question, "agent_id": agent_id, "top_k": 3}
@@ -103,6 +114,8 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
                         ],
                         namespace=question_cached_namespace
                     )
+                    
+                    crud.update_answer(db, question, document_id, answer)
                     
                     return (index, question, answer)
                 except Exception as e:
