@@ -8,7 +8,6 @@ import tempfile
 import aiohttp
 import asyncio
 from config.settings import settings
-from db import crud
 
 pc = Pinecone(
   api_key=settings.PINECONE_API_KEY
@@ -28,14 +27,17 @@ async def download_pdf_to_temp_file(pdf_url: str) -> str:
                 tmp.write(content)
                 return tmp.name
 
-async def process_documents_and_questions(pdf_url: str, questions: list[str], db: Session) -> dict:
+async def process_documents_and_questions(pdf_url: str, questions: list[str]) -> dict:
     print(f"Processing documents from URL: {pdf_url}")
     
-    document = crud.get_or_create_document(db, pdf_url)
-    document_id = document.id
+    # Printing questions
+    print(f"Received questions: {questions}")
     
-    for q in questions:
-        crud.create_question_entry(db, q, document_id)
+    # document = crud.get_or_create_document(db, pdf_url)
+    # document_id = document.id
+    
+    # for q in questions:
+    #     crud.create_question_entry(db, q, document_id)
 
     agent_id = generate_namespace_from_url(pdf_url)
     existing_namespaces = pinecone_index.describe_index_stats().namespaces.keys()
@@ -80,7 +82,7 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str], db
                         cached_answer = cache_result.matches[0].metadata.get("answer", "")
                         print(f"✅ Q{index}: Cached answer found (score {cache_result.matches[0].score:.4f})")
                         
-                        crud.update_answer(db, question, document_id, cached_answer)
+                        # crud.update_answer(db, question, document_id, cached_answer)
                         
                         return (index, question, cached_answer)
                     
@@ -115,7 +117,7 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str], db
                         namespace=question_cached_namespace
                     )
                     
-                    crud.update_answer(db, question, document_id, answer)
+                    # crud.update_answer(db, question, document_id, answer)
                     
                     return (index, question, answer)
                 except Exception as e:

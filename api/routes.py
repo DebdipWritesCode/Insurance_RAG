@@ -17,12 +17,11 @@ class HackRxResponse(BaseModel):
     answers: List[str]
 
 @router.post("/hackrx/run", response_model=HackRxResponse)
-async def run_rag_endpoint(payload: HackRxRequest, db: Session = Depends(get_db)):
+async def run_rag_endpoint(payload: HackRxRequest):
     try:
         results = await process_documents_and_questions(
             pdf_url=str(payload.documents),
             questions=payload.questions,
-            db=db
         )
         return {"answers": list(results.values())}
     except Exception as e:
