@@ -8,6 +8,8 @@ import tempfile
 import aiohttp
 import asyncio
 from config.settings import settings
+from logs.logs import add_logs
+import hashlib
 
 pc = Pinecone(
   api_key=settings.PINECONE_API_KEY
@@ -78,6 +80,8 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
                         include_metadata=True
                     )
                     
+                    print(f"Received score for question '{question}': {cache_result.matches[0].score if cache_result.matches else 'No matches'}")
+                    
                     if cache_result.matches and cache_result.matches[0].score > 0.9:
                         cached_answer = cache_result.matches[0].metadata.get("answer", "")
                         print(f"✅ Q{index}: Cached answer found (score {cache_result.matches[0].score:.4f})")
@@ -102,11 +106,14 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
                     print(f"No cached answer found, asking GPT...")
                     
                     answer = await ask_gpt(context, question)
+                    
+                    hash_digest = hashlib.sha256(question.encode()).hexdigest()[:12]
+                    vector_id = f"q_{hash_digest}_{agent_id}"
 
                     pinecone_index.upsert(
                         vectors=[
                             {
-                                "id": f"q_{index}_{agent_id}",
+                                "id": vector_id,
                                 "values": question_vector[0],
                                 "metadata": {
                                     "question": question,
@@ -129,4 +136,5 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
     responses = await asyncio.gather(*tasks)
 
     results = {q: ans for _, q, ans in sorted(responses)}
+    # add_logs(pdf_url, results)
     return results
