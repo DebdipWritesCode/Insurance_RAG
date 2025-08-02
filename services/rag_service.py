@@ -8,7 +8,7 @@ import tempfile
 import aiohttp
 import asyncio
 from config.settings import settings
-from logs.logs import add_logs
+# from logs.logs import add_logs
 import hashlib
 
 pc = Pinecone(
