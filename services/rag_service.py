@@ -1,3 +1,4 @@
+from typing import List
 from pinecone import Pinecone
 from sqlalchemy.orm import Session
 from services.vector_store import embed_and_upsert, retrieve_from_kb, split_text, embed_text_batch
@@ -10,6 +11,13 @@ import asyncio
 from config.settings import settings
 # from logs.logs import add_logs
 import hashlib
+from services.document_db_service import (
+    find_answers_in_db,
+    append_qa_pairs,
+    QAPair,
+    create_document,
+    get_document_by_url,
+)
 
 pc = Pinecone(
   api_key=settings.PINECONE_API_KEY
@@ -29,17 +37,20 @@ async def download_pdf_to_temp_file(pdf_url: str) -> str:
                 tmp.write(content)
                 return tmp.name
 
-async def process_documents_and_questions(pdf_url: str, questions: list[str]) -> dict:
+async def process_documents_and_questions(pdf_url: str, questions: List[str]) -> dict:
     print(f"Processing documents from URL: {pdf_url}")
-    
-    # Printing questions
     print(f"Received questions: {questions}")
     
-    # document = crud.get_or_create_document(db, pdf_url)
-    # document_id = document.id
-    
-    # for q in questions:
-    #     crud.create_question_entry(db, q, document_id)
+    existing_doc = await get_document_by_url(pdf_url)
+    if not existing_doc:
+        print(f"🆕 Creating document record in MongoDB for URL: {pdf_url}")
+        await create_document({
+            "document_url": pdf_url,
+            "questions": [],
+            "qa_pairs": []
+        })
+    else:
+        print(f"📄 Document already exists in MongoDB")
 
     agent_id = generate_namespace_from_url(pdf_url)
     existing_namespaces = pinecone_index.describe_index_stats().namespaces.keys()
@@ -61,6 +72,13 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
     else:
         print(f"📂 Namespace '{agent_id}' already exists. Skipping download and embedding.")
 
+    # Step 1: Check existing answers in MongoDB
+    existing_answers = await find_answers_in_db(pdf_url, questions)
+    unanswered_questions = [q for q in questions if q not in existing_answers]
+
+    print(f"Found {len(existing_answers)} answers in DB")
+    print(f"{len(unanswered_questions)} questions to process further")
+
     semaphore = asyncio.Semaphore(15)
 
     async def process_question(index: int, question: str) -> tuple[int, str, str]:
@@ -73,68 +91,65 @@ async def process_documents_and_questions(pdf_url: str, questions: list[str]) ->
                     if not question_vector or not question_vector[0]:
                         raise ValueError("Failed to embed question")
 
+                    # Step 2: Check Pinecone
                     cache_result = pinecone_index.query(
                         vector=question_vector[0],
                         namespace=question_cached_namespace,
                         top_k=1,
                         include_metadata=True
                     )
-                    
-                    print(f"Received score for question '{question}': {cache_result.matches[0].score if cache_result.matches else 'No matches'}")
-                    
+
                     if cache_result.matches and cache_result.matches[0].score > 0.9:
                         cached_answer = cache_result.matches[0].metadata.get("answer", "")
-                        print(f"✅ Q{index}: Cached answer found (score {cache_result.matches[0].score:.4f})")
+                        print(f"✅ Q{index}: Semantic cache hit")
                         
-                        # crud.update_answer(db, question, document_id, cached_answer)
-                        
+                        # Save to MongoDB
+                        await append_qa_pairs(pdf_url, [QAPair(question=question, answer=cached_answer)])
+
                         return (index, question, cached_answer)
-                    
-                    retrieval_input = {"query": question, "agent_id": agent_id, "top_k": 3}
-                    retrieved = await retrieve_from_kb(retrieval_input)
+
+                    # Step 3: Retrieve context and ask GPT
+                    print(f"Q{index}: No semantic match found, querying GPT")
+                    retrieved = await retrieve_from_kb({"query": question, "agent_id": agent_id, "top_k": 3})
                     retrieved_chunks = retrieved.get("chunks", [])
-                    
+
                     if not retrieved_chunks:
                         raise ValueError("No chunks retrieved")
 
                     max_context_chars = 3000
                     context = "\n".join(retrieved_chunks)[:max_context_chars]
-                    if len(context) > 3000:
-                        context = context[:3000]
 
-                    print(f"✏️ Q{index}: Context preview: {context[:100]}...")
-                    print(f"No cached answer found, asking GPT...")
-                    
                     answer = await ask_gpt(context, question)
-                    
+
+                    # Cache in Pinecone
                     hash_digest = hashlib.sha256(question.encode()).hexdigest()[:12]
                     vector_id = f"q_{hash_digest}_{agent_id}"
-
                     pinecone_index.upsert(
-                        vectors=[
-                            {
-                                "id": vector_id,
-                                "values": question_vector[0],
-                                "metadata": {
-                                    "question": question,
-                                    "answer": answer,
-                                }
-                            }
-                        ],
+                        vectors=[{
+                            "id": vector_id,
+                            "values": question_vector[0],
+                            "metadata": {"question": question, "answer": answer}
+                        }],
                         namespace=question_cached_namespace
                     )
-                    
-                    # crud.update_answer(db, question, document_id, answer)
-                    
+
+                    # Save in MongoDB
+                    await append_qa_pairs(pdf_url, [QAPair(question=question, answer=answer)])
+
                     return (index, question, answer)
+
                 except Exception as e:
                     print(f"⚠️ Q{index}: Attempt {attempt + 1} failed with error: {e}")
+
             return (index, question, "Sorry, I couldn't find relevant information.")
 
-    print(f"🧠 Parallel processing {len(questions)} questions...")
-    tasks = [asyncio.create_task(process_question(i, q)) for i, q in enumerate(questions)]
+    print(f"🧠 Processing {len(unanswered_questions)} unanswered questions...")
+    tasks = [asyncio.create_task(process_question(i, q)) for i, q in enumerate(unanswered_questions)]
     responses = await asyncio.gather(*tasks)
 
-    results = {q: ans for _, q, ans in sorted(responses)}
-    # add_logs(pdf_url, results)
-    return results
+    new_answers = {q: ans for _, q, ans in sorted(responses)}
+    all_answers = existing_answers | new_answers
+
+    # Optionally log: add_logs(pdf_url, all_answers)
+
+    return all_answers

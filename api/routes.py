@@ -5,7 +5,6 @@ from typing import List
 
 from sqlalchemy.orm import Session
 from services.rag_service import process_documents_and_questions
-from .deps import get_db
 
 from config.settings import settings
 

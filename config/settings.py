@@ -9,7 +9,8 @@ class Settings:
     PINECONE_ENVIRONMENT = os.getenv("PINECONE_ENVIRONMENT")
     PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME")
     PINECONE_HOST_NAME = os.getenv("PINECONE_HOST_NAME")
-    DATABASE_URL = os.getenv("DATABASE_URL")
     EXPECTED_TOKEN = os.getenv("EXPECTED_TOKEN")
+    MONGODB_URI: str = os.getenv("MONGODB_URI")
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME")
 
 settings = Settings()
