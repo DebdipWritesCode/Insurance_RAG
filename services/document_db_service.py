@@ -82,3 +82,15 @@ async def find_answers_in_db(document_url: str, questions: List[str]) -> dict[st
             found_answers[original_q] = existing_qapairs_map[norm_q]
 
     return found_answers
+
+async def get_all_documents() -> List[DocumentModel]:
+    documents_cursor = document_collection.find({})
+    documents = await documents_cursor.to_list(length=None)
+    return [DocumentModel(**doc) for doc in documents]
+
+async def update_document(document_url: str, update_fields: dict) -> DocumentModel:
+    await document_collection.update_one(
+        {"document_url": document_url},
+        {"$set": update_fields}
+    )
+    return await get_document_by_url(document_url)

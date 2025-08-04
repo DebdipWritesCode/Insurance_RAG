@@ -17,6 +17,8 @@ from services.document_db_service import (
     QAPair,
     create_document,
     get_document_by_url,
+    update_document,
+    get_all_documents,
 )
 
 pc = Pinecone(
@@ -153,3 +155,34 @@ async def process_documents_and_questions(pdf_url: str, questions: List[str]) ->
     # Optionally log: add_logs(pdf_url, all_answers)
 
     return all_answers
+
+async def clear_qa_caches():
+    print("🧹 Starting cache cleanup process...")
+
+    all_documents = await get_all_documents()
+    if not all_documents:
+        print("❌ No documents found in DB.")
+        return
+
+    for doc in all_documents:
+        pdf_url = doc.document_url
+        if not pdf_url:
+            continue
+
+        print(f"\n🧾 Processing document: {pdf_url}")
+        agent_id = generate_namespace_from_url(str(pdf_url))
+        question_namespace = f"question_cached_{agent_id}"
+
+        print("🗑️ Clearing QA pairs from MongoDB...")
+        await update_document(str(pdf_url), {
+            "qa_pairs": [],
+            "questions": []
+        })
+
+        try:
+            print(f"🗑️ Deleting namespace '{question_namespace}' from Pinecone...")
+            pinecone_index.delete(delete_all=True, namespace=question_namespace)
+        except Exception as e:
+            print(f"⚠️ Failed to delete Pinecone namespace {question_namespace}: {e}")
+
+    print("\n✅ Finished clearing all QA caches.")
