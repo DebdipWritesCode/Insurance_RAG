@@ -12,5 +12,6 @@ class Settings:
     EXPECTED_TOKEN = os.getenv("EXPECTED_TOKEN")
     MONGODB_URI: str = os.getenv("MONGODB_URI")
     DATABASE_NAME: str = os.getenv("DATABASE_NAME")
+    SERPAPI_API_KEY: str = os.getenv("SERPAPI_API_KEY")
 
 settings = Settings()
