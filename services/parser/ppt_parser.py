@@ -4,13 +4,23 @@ from pptx import Presentation
 from pdf2image import convert_from_path
 import pytesseract
 
+import subprocess
+
 def pptx_to_pdf(pptx_path: str, output_pdf_path: str) -> None:
-    """
-    Converts a PPTX file to PDF using LibreOffice (soffice).
-    Works on Linux/Mac. On Windows, use PowerPoint automation instead.
-    """
-    command = f'soffice --headless --convert-to pdf "{pptx_path}" --outdir "{os.path.dirname(output_pdf_path)}"'
-    os.system(command)
+    output_dir = os.path.dirname(output_pdf_path)
+    command = [
+        "soffice",
+        "--headless",
+        "--convert-to", "pdf",
+        "--outdir", output_dir,
+        pptx_path
+    ]
+    try:
+        result = subprocess.run(command, capture_output=True, check=True)
+        print("✅ LibreOffice Output:", result.stdout.decode())
+    except subprocess.CalledProcessError as e:
+        print("❌ LibreOffice failed:", e.stderr.decode())
+        raise RuntimeError("PDF conversion failed") from e
     
 def extract_text_from_pdf_ocr(pdf_path: str) -> list[str]:
     slides = convert_from_path(pdf_path, dpi=300)
