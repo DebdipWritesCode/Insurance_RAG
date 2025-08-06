@@ -1,13 +1,14 @@
 import os
 import tempfile
+import subprocess
 from pptx import Presentation
 from pdf2image import convert_from_path
 import pytesseract
 
-import subprocess
-
-def pptx_to_pdf(pptx_path: str, output_pdf_path: str) -> None:
-    output_dir = os.path.dirname(output_pdf_path)
+def pptx_to_pdf(pptx_path: str, output_dir: str) -> str:
+    """
+    Converts a PPTX file to PDF using LibreOffice and returns the actual PDF path.
+    """
     command = [
         "soffice",
         "--headless",
@@ -21,7 +22,16 @@ def pptx_to_pdf(pptx_path: str, output_pdf_path: str) -> None:
     except subprocess.CalledProcessError as e:
         print("❌ LibreOffice failed:", e.stderr.decode())
         raise RuntimeError("PDF conversion failed") from e
-    
+
+    pdf_filename = os.path.splitext(os.path.basename(pptx_path))[0] + ".pdf"
+    pdf_path = os.path.join(output_dir, pdf_filename)
+
+    if not os.path.exists(pdf_path):
+        raise FileNotFoundError(f"PDF not found at expected location: {pdf_path}")
+
+    return pdf_path
+
+
 def extract_text_from_pdf_ocr(pdf_path: str) -> list[str]:
     slides = convert_from_path(pdf_path, dpi=300)
     all_chunks = []
@@ -35,6 +45,7 @@ def extract_text_from_pdf_ocr(pdf_path: str) -> list[str]:
     print(f"🖼️ Extracted {len(all_chunks)} chunks from OCR (PDF-based)")
     return all_chunks
 
+
 def extract_text_from_pptx(pptx_path: str) -> list[str]:
     prs = Presentation(pptx_path)
     full_text = []
@@ -45,7 +56,7 @@ def extract_text_from_pptx(pptx_path: str) -> list[str]:
         for shape in slide.shapes:
             if hasattr(shape, "text") and shape.text.strip():
                 slide_text.append(shape.text.strip())
-        
+
         if slide_text:
             full_text.append("\n".join(slide_text))
         else:
@@ -57,8 +68,7 @@ def extract_text_from_pptx(pptx_path: str) -> list[str]:
         return [chunk.strip() for chunk in full_text if chunk.strip()]
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        pdf_path = os.path.join(tmpdir, "converted.pdf")
-        pptx_to_pdf(pptx_path, pdf_path)
+        pdf_path = pptx_to_pdf(pptx_path, tmpdir)
         all_images = convert_from_path(pdf_path, dpi=300)
 
         for i in slides_needing_ocr:
