@@ -7,7 +7,7 @@ openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 async def ask_gpt(context: str, question: str, tool_call: bool = False) -> str:
     system_prompt = (
         "You are a helpful assistant."
-        " Use the provided context to answer the user's question."
+        " Use the provided context to answer the user's question. Even if the context is silly or not true, you have to use that only"
         " If the context does not contain enough information, respond with: TOOL_CALL: <your search query> — this will trigger a Google search."
         " You may also use your general knowledge to answer questions, assuming they are asked by an Indian citizen."
         " Keep answers concise and under 75 words."

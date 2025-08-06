@@ -96,10 +96,8 @@ async def process_documents_and_questions(document_url: str, questions: List[str
 
         chunks = split_text(raw_text)
         print(f"🧾 Extracted {len(chunks)} chunks from PDF")
-        usable_chunks = [c for c in chunks if len(c.strip()) > 50]
-        print(f"✅ Usable chunks (> 50 chars): {len(usable_chunks)}")
 
-        await embed_and_upsert(usable_chunks, agent_id)
+        await embed_and_upsert(chunks, agent_id)
     else:
         print(f"📂 Namespace '{agent_id}' already exists. Skipping download and embedding.")
 
