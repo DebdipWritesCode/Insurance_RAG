@@ -1,11 +1,6 @@
 import pdfplumber
 import httpx
 import tempfile
-from asyncio import Semaphore
-import asyncio
-
-MAX_CONCURRENT_TASKS = 30
-BATCH_SIZE = 20
 
 async def download_pdf(url: str) -> str:
     async with httpx.AsyncClient() as client:

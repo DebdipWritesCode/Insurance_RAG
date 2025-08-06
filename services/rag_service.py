@@ -2,13 +2,19 @@ from typing import List
 from pinecone import Pinecone
 from sqlalchemy.orm import Session
 from services.vector_store import embed_and_upsert, retrieve_from_kb, split_text, embed_text_batch
-from services.pdf_parser import extract_text_from_pdf
+from services.parser.pdf_parser import extract_text_from_pdf
+from services.parser.word_parser import extract_text_from_docx
+from services.parser.ppt_parser import extract_text_from_pptx
+from services.parser.excel_parser import extract_text_from_xlsx
+from services.parser.image_parser import extract_text_from_image
+from services.parser.txt_parser import extract_text_from_txt
 from services.gpt_client import ask_gpt
 import re
 import tempfile
 import aiohttp
 import asyncio
 from config.settings import settings
+from config.mime_types import MIME_EXTENSION_MAP
 # from logs.logs import add_logs
 import hashlib
 from services.document_db_service import (
@@ -29,41 +35,64 @@ pinecone_index = pc.Index(settings.PINECONE_INDEX_NAME)
 def generate_namespace_from_url(url: str) -> str:
     return re.sub(r'\W+', '_', url).strip('_').lower()
 
-async def download_pdf_to_temp_file(pdf_url: str) -> str:
+async def download_file_to_temp(file_url: str) -> str:
     async with aiohttp.ClientSession() as session:
-        async with session.get(pdf_url) as response:
+        async with session.get(file_url) as response:
             if response.status != 200:
-                raise Exception(f"Failed to download PDF. Status: {response.status}")
+                raise Exception(f"Failed to download file. Status: {response.status}")
             content = await response.read()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(content)
-                return tmp.name
+            
+            content_type = response.headers.get("Content-Type", "")
+            ext = MIME_EXTENSION_MAP.get(content_type)
+            
+            if not ext:
+                raise Exception(f"Unsupported or unknown Content-Type: {content_type}")
 
-async def process_documents_and_questions(pdf_url: str, questions: List[str]) -> dict:
-    print(f"Processing documents from URL: {pdf_url}")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+                tmp.write(content)
+                return tmp.name, content_type
+
+def parse_document_by_type(file_path: str, mime_type: str) -> str:
+    if mime_type == "application/pdf":
+        return extract_text_from_pdf(file_path)
+    elif mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+        return extract_text_from_docx(file_path)
+    elif mime_type == "application/vnd.openxmlformats-officedocument.presentationml.presentation":
+        return extract_text_from_pptx(file_path)
+    elif mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+        return extract_text_from_xlsx(file_path)
+    elif mime_type in ["image/jpeg", "image/png"]:
+        return extract_text_from_image(file_path)
+    elif mime_type == "text/plain":
+        return extract_text_from_txt(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {mime_type}")
+
+async def process_documents_and_questions(document_url: str, questions: List[str]) -> dict:
+    print(f"Processing documents from URL: {document_url}")
     print(f"Received questions: {questions}")
-    
-    existing_doc = await get_document_by_url(pdf_url)
+
+    existing_doc = await get_document_by_url(document_url)
     if not existing_doc:
-        print(f"🆕 Creating document record in MongoDB for URL: {pdf_url}")
+        print(f"🆕 Creating document record in MongoDB for URL: {document_url}")
         await create_document({
-            "document_url": pdf_url,
+            "document_url": document_url,
             "questions": [],
             "qa_pairs": []
         })
     else:
         print(f"📄 Document already exists in MongoDB")
 
-    agent_id = generate_namespace_from_url(pdf_url)
+    agent_id = generate_namespace_from_url(document_url)
     existing_namespaces = pinecone_index.describe_index_stats().namespaces.keys()
 
     if agent_id not in existing_namespaces:
-        print(f"🆕 Namespace '{agent_id}' not found. Proceeding with PDF download and embedding...")
+        print(f"🆕 Namespace '{agent_id}' not found. Proceeding with download and embedding...")
 
-        local_pdf_path = await download_pdf_to_temp_file(pdf_url)
-        raw_text_output = extract_text_from_pdf(local_pdf_path)
+        local_file_path, content_type = await download_file_to_temp(document_url)
+        raw_text_output = parse_document_by_type(local_file_path, content_type)
         raw_text = "\n".join(raw_text_output) if isinstance(raw_text_output, list) else raw_text_output
-        print(f"📄 Extracted {len(raw_text)} characters from PDF")
+        print(f"📄 Extracted {len(raw_text)} characters from document")
 
         chunks = split_text(raw_text)
         print(f"🧾 Extracted {len(chunks)} chunks from PDF")
@@ -75,7 +104,7 @@ async def process_documents_and_questions(pdf_url: str, questions: List[str]) ->
         print(f"📂 Namespace '{agent_id}' already exists. Skipping download and embedding.")
 
     # Step 1: Check existing answers in MongoDB
-    existing_answers = await find_answers_in_db(pdf_url, questions)
+    existing_answers = await find_answers_in_db(document_url, questions)
     unanswered_questions = [q for q in questions if q not in existing_answers]
 
     print(f"Found {len(existing_answers)} answers in DB")
@@ -106,7 +135,7 @@ async def process_documents_and_questions(pdf_url: str, questions: List[str]) ->
                         print(f"✅ Q{index}: Semantic cache hit")
                         
                         # Save to MongoDB
-                        await append_qa_pairs(pdf_url, [QAPair(question=question, answer=cached_answer)])
+                        await append_qa_pairs(document_url, [QAPair(question=question, answer=cached_answer)])
 
                         return (index, question, cached_answer)
 
@@ -136,7 +165,7 @@ async def process_documents_and_questions(pdf_url: str, questions: List[str]) ->
                     )
 
                     # Save in MongoDB
-                    await append_qa_pairs(pdf_url, [QAPair(question=question, answer=answer)])
+                    await append_qa_pairs(document_url, [QAPair(question=question, answer=answer)])
 
                     return (index, question, answer)
 

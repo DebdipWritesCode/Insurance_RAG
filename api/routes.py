@@ -1,4 +1,4 @@
-
+import requests
 from fastapi import APIRouter, HTTPException, Header, status
 from pydantic import BaseModel, HttpUrl
 from typing import List
@@ -29,8 +29,18 @@ async def run_rag_endpoint(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized")
 
     try:
+        try:
+            head_response = requests.head(str(payload.documents), allow_redirects=True, timeout=5)
+            content_type = head_response.headers.get("Content-Type", "")
+            print(f"Content-Type of the document: {content_type}")
+        except Exception as head_err:
+            return {"answers": ["Sorry, I cannot access this type of document."]}
+        
+        if content_type == "application/zip":
+            return {"answers": ["Sorry, this zip file contains files that I cannot process."]}
+
         results = await process_documents_and_questions(
-            pdf_url=str(payload.documents),
+            document_url=str(payload.documents),
             questions=payload.questions,
         )
         return {"answers": list(results.values())}
