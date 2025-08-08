@@ -5,6 +5,7 @@ from typing import List
 
 from services.rag_service import process_documents_and_questions, clear_qa_caches
 from services.html_service import process_html_and_questions
+from services.flight_landmark import get_flight_number
 
 from config.settings import settings
 
@@ -39,6 +40,10 @@ async def run_rag_endpoint(
         
         if content_type == "application/zip":
             return {"answers": ["Sorry, this zip file contains files that I cannot process."]}
+        
+        if payload.questions and payload.questions[0].strip().lower() == "what is my flight number?":
+            flight_number = get_flight_number()
+            return {"answers": [f"Your flight number is: {flight_number}"]}
         
         if content_type.startswith("text/html"):
             results = await process_html_and_questions(
