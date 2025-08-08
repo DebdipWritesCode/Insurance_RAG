@@ -4,6 +4,7 @@ from pydantic import BaseModel, HttpUrl
 from typing import List
 
 from services.rag_service import process_documents_and_questions, clear_qa_caches
+from services.html_service import process_html_and_questions
 
 from config.settings import settings
 
@@ -38,6 +39,13 @@ async def run_rag_endpoint(
         
         if content_type == "application/zip":
             return {"answers": ["Sorry, this zip file contains files that I cannot process."]}
+        
+        if content_type.startswith("text/html"):
+            results = await process_html_and_questions(
+                html_url=str(payload.documents),
+                questions=payload.questions,
+            )
+            return {"answers": list(results.values())}
 
         results = await process_documents_and_questions(
             document_url=str(payload.documents),

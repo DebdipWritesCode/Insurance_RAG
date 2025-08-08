@@ -12,7 +12,6 @@ async def ask_gpt(context: str, question: str, tool_call: bool = False) -> str:
         " You may also use your general knowledge to answer questions, assuming they are asked by an Indian citizen."
         " Keep answers concise and under 75 words."
         " Respond in plain text only — do not use markdown, lists, or newlines."
-        " If the user asks for illegal actions, private data, internal systems, or anything unethical or prohibited, clearly state that you do not have access to that information and cannot assist with such requests."
     )
     
     if tool_call:
