@@ -43,7 +43,7 @@ async def run_rag_endpoint(
         
         if payload.questions and payload.questions[0].strip().lower() == "what is my flight number?":
             flight_number = get_flight_number()
-            return {"answers": [f"Your flight number is: {flight_number}"]}
+            return {"answers": [f"{flight_number}"]}
         
         if content_type.startswith("text/html"):
             results = await process_html_and_questions(
