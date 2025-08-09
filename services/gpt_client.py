@@ -1,6 +1,6 @@
 from openai import AsyncOpenAI
 from config.settings import settings
-from services.search_api import serper_search
+from services.gpt_tools_service import search_tool, request_fetch_tool, TOOL_DEFINITIONS
 
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
@@ -30,19 +30,28 @@ async def ask_gpt(context: str, question: str, tool_call: bool = False) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
+        tools=TOOL_DEFINITIONS,
         temperature=0.0,
     )
     
-    answer = response.choices[0].message.content.strip()
+    msg = response.choices[0].message
     
-    if answer.startswith("TOOL_CALL:"):
-        query = answer.replace("TOOL_CALL:", "").strip()
-        print(f"🔍 Calling external tool with query: {query}")
-        tool_result = serper_search(query)
-        
-        print(f"🔍 Tool result: {tool_result}")
-        
-        updated_context = f"Additional Search Result: {tool_result}\n\n{context}"
-        return await ask_gpt(updated_context, question, tool_call=True)
+    if msg.tool_calls:
+        for tool_call in msg.tool_calls:
+            fn_name = tool_call.function.name
+            args = tool_call.function.arguments
 
-    return answer
+            if fn_name == "search":
+                tool_result = await search_tool(args["query"])
+            elif fn_name == "request_fetch":
+                tool_result = await request_fetch_tool(args["url"])
+            else:
+                tool_result = "Unknown tool"
+
+            return await ask_gpt(
+                context=f"Tool Result: {tool_result}\n\n{context}",
+                question=question
+            )
+        
+
+    return msg.content.strip()
