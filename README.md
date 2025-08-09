@@ -1,4 +1,4 @@
-# Insurance\_RAG
+# Insurance\_RAG with 3 Level Caching
 
 **A production-ready Retrieval-Augmented Generation (RAG) backend** built with **FastAPI**, **MongoDB**, and **Pinecone**.
 It answers insurance-related queries based on provided documents with a **three-level caching system** for ultra-fast response times and reduced API costs.
