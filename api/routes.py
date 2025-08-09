@@ -41,10 +41,6 @@ async def run_rag_endpoint(
         if content_type == "application/zip":
             return {"answers": ["Sorry, this zip file contains files that I cannot process."]}
         
-        if payload.questions and payload.questions[0].strip().lower() == "what is my flight number?":
-            flight_number = get_flight_number()
-            return {"answers": [f"{flight_number}"]}
-        
         if content_type.startswith("text/html"):
             results = await process_html_and_questions(
                 html_url=str(payload.documents),
